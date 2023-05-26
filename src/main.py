@@ -15,7 +15,7 @@ firefox_driver = os.getenv("DRIVER_FOLDER") + "firefox"
 search_tags = os.getenv("SEARCH_TAGS").split("-") 
 url = os.getenv("URL")
 
-webhook_url = "https://hooks.slack.com/services/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" #os.getenv("WEBHOOK_URL_DEV")
+webhook_url = os.getenv("WEBHOOK_URL_DEV")
 def main_firefox():
         options = webdriver.FirefoxOptions()
         executable_path="/home/lrawicz/Desktop/develop/code/freelance/upwork/upwork-api/drivers/geckodriver-v0.33.0"
