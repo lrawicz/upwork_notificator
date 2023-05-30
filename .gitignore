@@ -1,2 +1,5 @@
 .env
 /user-data-dir=
+config.json
+DB/
+drivers/
