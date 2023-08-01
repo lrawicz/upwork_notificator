@@ -37,7 +37,12 @@ def main_firefox():
 
 def send_msg(dict,webhook_url):
     if dict == {}:
-        dict = {"title":"Pikachu","link":"www.google.com","time_and_cash":"ayer","search":"Excel"}
+        dict = {
+            "title":"Pikachu",
+            "link":"www.google.com",
+            "time_and_cash":"ayer",
+            "search":"Excel"
+        }
     
     skills = ', '.join(dict["skills"])
     payload = { 
@@ -48,12 +53,20 @@ def send_msg(dict,webhook_url):
             {"type": "context","elements": 
                 [{"type": "mrkdwn","text": f"{dict['time_and_cash']}"}]
             },
+            {
+			"type": "section","text": {
+				"type": "plain_text",
+				"text": f"{dict['desc'][:500]}...",
+				"emoji": True
+			}
+            },
             {"type": "context","elements":
                 [{"type": "mrkdwn","text": f"*Skills*: {skills}"}]
             },
             {"type": "divider"}
         ]
         }
+    #job-description-text
     json_payload = json.dumps(payload)
     response = requests.post(webhook_url, data=json_payload)
 
@@ -100,13 +113,18 @@ def main_uc():
     # Open the file and load its |ontents
     with open("config.json", 'r') as file:
         slackConfig = json.load(file)
-    dict_webhook = {filter_name:{"webhook":slackConfig[item]["webhook"], "category":item} for item in slackConfig for filter_name in slackConfig[item]["filters"]}
 
+    active_categories = slackConfig["active_categories"]
+
+#options = webdriver.ChromeOptions()
+    options = uc.ChromeOptions()
+    options.add_argument(r"user-data-dir=/home/lrawicz/.config/google-chrome")
 
     #options = webdriver.ChromeOptions()
-    options = uc.ChromeOptions()
-    options.user_data_dir = r"user-data-dir=/home/lrawicz/.config/google-chrome/Profile 5" 
-    options.add_argument(r"user-data-dir=/home/lrawicz/.config/google-chrome")  
+    #options.add_argument(r"profile-directory=Profile 5")
+
+    #options.user_data_dir = r"user-data-dir=/home/lrawicz/.config/google-chrome/Profile 5"
+    #options.add_argument(r"user-data-dir=/home/lrawicz/.config/google-chrome")
 
     #options.add_argument("--headless")
 
@@ -114,20 +132,80 @@ def main_uc():
 
     #options.add_argument(r"profile-directory=Profile 5")
     #executable_path="/home/lrawicz/Desktop/develop/code/freelance/upwork/upwork-api/drivers/chromedriver"
-    #driver = webdriver.Chrome(executable_path=executable_path, options=options)
+    #driver = webdriver.Chrome(executable_path=executable_path, options=    options)
     
-    
-    with uc.Chrome(options = options , version_main = 113) as driver:
+    #chromedriver_path = "./drivers/chrome/chromedriver"
+    #with webdriver.Chrome(executable_path=chromedriver_path, options=options) as driver:
+
+    with uc.Chrome(options = options , version_main = 114) as driver:
+
         driver.get('https://www.upwork.com/ab/account-security/login')
         time.sleep(2)
+        input("waiting for login.... ")
+        """
         login = driver.find_elements(By.CSS_SELECTOR,"button#login_google_submit")
-        print("proceso de Login")
-        logger.info("login...")
         if len(login) > 0:
             login[0].click()
-            time.sleep(8)
+            time.sleep(5)
+        """
+        print("proceso de Login")
+        logger.info("login...")
 
-        #input("waiting for login.... ")
+        while (True):
+            for category in active_categories:
+                print("/////")
+                print(f"searching in {category}")
+                print("/////")
+                saved_searchs = driver.find_elements(By.CSS_SELECTOR,"*[data-test='select-saved-search']")
+                webhook = slackConfig["categories"][category]["webhook"]
+                search_keywords = slackConfig["categories"][category]["filters"]
+                sub_searchs = [{"title":search.text,"link":search.get_attribute("href")} for search in saved_searchs if search.text in search_keywords]
+                time.sleep(5)
+                for search in sub_searchs:
+                    time.sleep(1)
+                    search_category = category
+                    if not os.path.exists(f"DB/{search_category}"):
+                        os.makedirs(f"DB/{search_category}")
+                    driver.get(search["link"]) #go to site
+                    #scroll down
+                    for iteration in range (0,10):
+                        driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight*{iteration/10});")
+                        time.sleep(10/1000)
+
+                    job_tile_list = driver.find_elements(By.CSS_SELECTOR,"*[data-test='job-tile-list']")
+                    if len(job_tile_list) == 0:
+                        return False #mejorar el manejo de errores
+                    job_tile_list = job_tile_list[0]
+                    jobs = job_tile_list.find_elements(By.TAG_NAME, "section")
+                    jobs = jobs [::-1] #invert list
+                    new_jobs ={}
+                    for job in jobs:
+                        job_dict = create_job_dict(job)
+                        time_filter= ["minute"] # ["minute","hour"]
+                        if (job_dict["time_and_cash"].split("Posted")[1].strip().split(" ")[1].split("s")[0] not in time_filter):
+                            continue
+                        if os.path.exists(f"DB/{search_category}/{job_dict['id']}"):
+                            continue
+                        with open(f"DB/{search_category}/{job_dict['id']}","w"):
+                            pass
+                        new_jobs[job_dict['id']] = job_dict
+
+                    if len(new_jobs.keys()) == 0:
+                        continue
+                    print(f"{search['title'].capitalize()} - Job founds: {len(new_jobs.keys())}")
+                    print("--------")
+
+                    for job_key in new_jobs:
+                        send_msg(new_jobs[job_key],webhook)
+"""
+            print(slackConfig["categories"][active_categories[0]]["filters"])
+
+    return 0
+    dict_webhook = {filter_name:{"webhook":slackConfig[item]["webhook"], "category":item} for item in slackConfig for filter_name in slackConfig[item]["filters"]}
+
+
+        #first_window = driver.window_handles[0]
+
         searchs = []
         while len(searchs) == 0:
             time.sleep(1)
@@ -158,10 +236,12 @@ def main_uc():
                     return False #mejorar el manejo de errores
                 job_tile_list = job_tile_list[0]
                 jobs = job_tile_list.find_elements(By.TAG_NAME, "section")
+                jobs = jobs [::-1] #invert list
                 new_jobs ={}
                 for job in jobs:
                     job_dict = create_job_dict(job)
-                    if (job_dict["time_and_cash"].split("Posted")[1].strip().split(" ")[1].split("s")[0] not in ["minute","hour"]):
+                    time_filter= ["minute"] # ["minute","hour"]
+                    if (job_dict["time_and_cash"].split("Posted")[1].strip().split(" ")[1].split("s")[0] not in time_filter):
                         continue
                     if os.path.exists(f"DB/{search_category}/{job_dict['id']}"):
                         continue
@@ -176,7 +256,7 @@ def main_uc():
 
                 for job_key in new_jobs:
                     send_msg(new_jobs[job_key],dict_webhook[search["title"]]["webhook"])
-
+"""
 if (__name__ == "__main__"):
     while 1:
         main_uc()
